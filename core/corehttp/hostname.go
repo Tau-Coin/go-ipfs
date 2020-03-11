@@ -101,8 +101,32 @@ func HostnameOption() ServeOption {
 						// Yes, redirect if applicable (pretty much everything except `/api`).
 						// Example: dweb.link/ipfs/{cid} → {cid}.ipfs.dweb.link
 						if newURL, ok := toSubdomainURL(r.Host, r.URL.Path, r.URL.RawQuery); ok {
+							// Just to be sure single Origin can't be abused in
+							// web browsers that ignored the redirect for some
+							// reason, Clear-Site-Data header clears browsing
+							// data (cookies, storage etc) associated with
+							// hostname's root Origin
+							// Note: we can't use "*" due to bug in Chromium:
+							// https://bugs.chromium.org/p/chromium/issues/detail?id=898503
+							w.Header().Set("Clear-Site-Data", "\"cookies\", \"storage\"")
+
+							// If the Content-Type header has not been set,
+							// http.Redirect would set it to "text/html;
+							// charset=utf-8" and write a small HTML body. We
+							// want to return payload in body for curl.
+							// Setting the Content-Type here disables
+							// default body.
+							_, hasCT := w.Header()["Content-Type"]
+							if !hasCT {
+								w.Header().Set("Content-Type", "application/octet-stream")
+							}
+
+							// Send HTTP 301 status code and set "Location"
+							// header with redirect destination: it is ignored
+							// by curl in default mode, but will be respected
+							// by user agents that follow redirects by default,
+							// namely web browsers
 							http.Redirect(w, r, newURL, http.StatusMovedPermanently)
-							return
 						}
 					}
 
