@@ -110,23 +110,15 @@ func HostnameOption() ServeOption {
 							// https://bugs.chromium.org/p/chromium/issues/detail?id=898503
 							w.Header().Set("Clear-Site-Data", "\"cookies\", \"storage\"")
 
-							// If the Content-Type header has not been set,
-							// http.Redirect would set it to "text/html;
-							// charset=utf-8" and write a small HTML body. We
-							// want to return payload in body for curl.
-							// Setting the Content-Type here disables
-							// default body.
-							_, hasCT := w.Header()["Content-Type"]
-							if !hasCT {
-								w.Header().Set("Content-Type", "application/octet-stream")
-							}
+							// Set "Location" header with redirect destination.
+							// It is ignored by curl in default mode, but will
+							// be respected by user agents that follow
+							// redirects by default, namely web browsers
+							w.Header().Set("Location", newURL)
 
-							// Send HTTP 301 status code and set "Location"
-							// header with redirect destination: it is ignored
-							// by curl in default mode, but will be respected
-							// by user agents that follow redirects by default,
-							// namely web browsers
-							http.Redirect(w, r, newURL, http.StatusMovedPermanently)
+							// Note: we continue regular gateway processing:
+							// HTTP Status Code http.StatusMovedPermanently
+							// will be set later, in statusResponseWriter
 						}
 					}
 

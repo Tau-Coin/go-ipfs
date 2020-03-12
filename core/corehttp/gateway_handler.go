@@ -14,12 +14,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
+	mfs "github.com/ipfs/go-mfs"
+
 	"github.com/ipfs/go-cid"
 	files "github.com/ipfs/go-ipfs-files"
 	dag "github.com/ipfs/go-merkledag"
-	"github.com/ipfs/go-mfs"
-	"github.com/ipfs/go-path"
+	path "github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -36,6 +37,29 @@ const (
 type gatewayHandler struct {
 	config GatewayConfig
 	api    coreiface.CoreAPI
+}
+
+// StatusResponseWriter enables us to override HTTP Status Code passed to
+// WriteHeader function inside of http.ServeContent.  Decision is based on
+// presence of HTTP Headers such as Location.
+type statusResponseWriter struct {
+	w http.ResponseWriter
+}
+
+func (sw *statusResponseWriter) Header() http.Header { return sw.w.Header() }
+
+func (sw *statusResponseWriter) Write(p []byte) (int, error) { return sw.w.Write(p) }
+
+func (sw *statusResponseWriter) WriteHeader(code int) {
+	// Check if we need to adjust Status Code to account for scheduled redirect
+	// This enables us to return HTTP 301
+	// for subdomain redirect in web browsers while also returning body for cli
+	// tools which does not follow redirects by default (curl, wget).
+	redirect := sw.w.Header().Get("Location")
+	if redirect != "" {
+		code = http.StatusMovedPermanently
+	}
+	sw.w.WriteHeader(code)
 }
 
 func newGatewayHandler(c GatewayConfig, api coreiface.CoreAPI) *gatewayHandler {
@@ -365,6 +389,7 @@ func (i *gatewayHandler) serveFile(w http.ResponseWriter, req *http.Request, nam
 	}
 	w.Header().Set("Content-Type", ctype)
 
+	w = &statusResponseWriter{w: w}
 	http.ServeContent(w, req, name, modtime, content)
 }
 
